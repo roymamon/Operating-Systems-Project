@@ -1,23 +1,20 @@
-// rxample: ./euler_graph 8 6 42 -p
+// graph.c
+// Standalone example run (CLI build only): ./graph <edges> <vertices> [seed] [-p]
 
 #define _XOPEN_SOURCE 700
+#include "graph.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>     // getopt
+#include <unistd.h>
 #include <time.h>
-#include <math.h>
 #include <errno.h>
-
-typedef struct {
-    int V;      // number of vertices
-    int E;      // number of edges
-    int **adj;  // adjacency matrix (0/1), undirected
-} Graph;
+#include <math.h>   // (not strictly needed, but kept from prior code)
 
 /*------------------ Graph utils ------------------*/
 
-static Graph* create_graph(int V) {
+Graph* create_graph(int V) {
     Graph *g = malloc(sizeof(Graph));
     if (!g) { perror("malloc"); exit(1); }
     g->V = V;
@@ -31,7 +28,7 @@ static Graph* create_graph(int V) {
     return g;
 }
 
-static void free_graph(Graph *g) {
+void free_graph(Graph *g) {
     if (!g) return;
     for (int i = 0; i < g->V; ++i) free(g->adj[i]);
     free(g->adj);
@@ -48,13 +45,13 @@ static int add_edge(Graph *g, int u, int v) {
     return 1;
 }
 
-static int degree(const Graph *g, int u) {
+int degree(const Graph *g, int u) {
     int d = 0;
     for (int v = 0; v < g->V; ++v) d += g->adj[u][v];
     return d;
 }
 
-static void print_graph(const Graph *g) {
+void print_graph(const Graph *g) {
     printf("Graph: V=%d, E=%d\nAdjacency matrix:\n", g->V, g->E);
     for (int i = 0; i < g->V; ++i) {
         for (int j = 0; j < g->V; ++j) {
@@ -66,7 +63,7 @@ static void print_graph(const Graph *g) {
 
 /*------------------ Random graph generator ------------------*/
 
-static void generate_random_graph(Graph *g, int targetE, unsigned int seed) {
+void generate_random_graph(Graph *g, int targetE, unsigned int seed) {
     srand(seed);
     const long long maxE = (long long)g->V * (g->V - 1) / 2;
     if (targetE > maxE) {
@@ -77,7 +74,7 @@ static void generate_random_graph(Graph *g, int targetE, unsigned int seed) {
     while (g->E < targetE) {
         int u = rand() % g->V;
         int v = rand() % g->V;
-        if (add_edge(g, u, v)) { /* added */ }
+        (void)add_edge(g, u, v);
     }
 }
 
@@ -90,11 +87,12 @@ static void dfs(const Graph *g, int u, int *visited) {
     }
 }
 
-static int connected_among_non_isolated(const Graph *g) {
+int connected_among_non_isolated(const Graph *g) {
     int start = -1;
     for (int i = 0; i < g->V; ++i) if (degree(g, i) > 0) { start = i; break; }
-    if (start == -1) return 1; // no edges
+    if (start == -1) return 1; // no edges: conventionally Eulerian
     int *visited = calloc(g->V, sizeof(int));
+    if (!visited) { perror("calloc"); exit(1); }
     dfs(g, start, visited);
     int ok = 1;
     for (int i = 0; i < g->V; ++i) {
@@ -106,29 +104,37 @@ static int connected_among_non_isolated(const Graph *g) {
 
 /*------------------ Euler circuit ------------------*/
 
-static int all_even_degrees(const Graph *g) {
+int all_even_degrees(const Graph *g) {
     for (int i = 0; i < g->V; ++i)
         if (degree(g, i) % 2 != 0) return 0;
     return 1;
 }
 
-static int euler_circuit(const Graph *g, int **path_out, int *path_len_out) {
+int euler_circuit(const Graph *g, int **path_out, int *path_len_out) {
     if (!connected_among_non_isolated(g)) return 0;
     if (!all_even_degrees(g)) return 0;
 
     int **adj = malloc(g->V * sizeof(int*));
+    if (!adj) { perror("malloc"); exit(1); }
     for (int i = 0; i < g->V; ++i) {
         adj[i] = malloc(g->V * sizeof(int));
+        if (!adj[i]) { perror("malloc"); exit(1); }
         memcpy(adj[i], g->adj[i], g->V * sizeof(int));
     }
     int *deg = malloc(g->V * sizeof(int));
+    if (!deg) { perror("malloc"); exit(1); }
     for (int i = 0; i < g->V; ++i) deg[i] = degree(g, i);
 
     int start = 0;
     for (int i = 0; i < g->V; ++i) if (deg[i] > 0) { start = i; break; }
 
-    int stackCap = g->E + 2, *stack = malloc(stackCap * sizeof(int)), top = 0;
-    int outCap = g->E + 2, *out = malloc(outCap * sizeof(int)), outLen = 0;
+    int stackCap = g->E + 2, top = 0;
+    int *stack = malloc(stackCap * sizeof(int));
+    if (!stack) { perror("malloc"); exit(1); }
+
+    int outCap = g->E + 2, outLen = 0;
+    int *out = malloc(outCap * sizeof(int));
+    if (!out) { perror("malloc"); exit(1); }
 
     stack[top++] = start;
     while (top > 0) {
@@ -139,24 +145,35 @@ static int euler_circuit(const Graph *g, int **path_out, int *path_len_out) {
         if (v != -1) {
             adj[u][v]--; adj[v][u]--;
             deg[u]--; deg[v]--;
+            if (top >= stackCap) {
+                stackCap *= 2;
+                stack = realloc(stack, stackCap * sizeof(int));
+                if (!stack) { perror("realloc"); exit(1); }
+            }
             stack[top++] = v;
         } else {
+            if (outLen >= outCap) {
+                outCap *= 2;
+                out = realloc(out, outCap * sizeof(int));
+                if (!out) { perror("realloc"); exit(1); }
+            }
             out[outLen++] = u;
             top--;
         }
     }
 
     for (int i = 0; i < g->V; ++i) free(adj[i]);
-    free(adj); free(deg);
+    free(adj);
+    free(deg);
+    free(stack);
 
     *path_out = out;
     *path_len_out = outLen;
-    free(stack);
     return 1;
 }
 
-/*------------------ Main ------------------*/
-
+/*------------------ CLI main (compiled out for server) ------------------*/
+#ifndef GRAPH_NO_MAIN
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <edges> <vertices> [seed] [-p]\n", argv[0]);
@@ -201,7 +218,6 @@ int main(int argc, char **argv) {
     int *path = NULL, pathLen = 0;
     euler_circuit(g, &path, &pathLen);
 
-
     printf("Euler circuit exists. Sequence of vertices:\n");
     for (int i = 0; i < pathLen; ++i) {
         printf("%d%s", path[i], (i + 1 == pathLen ? "\n" : " -> "));
@@ -211,3 +227,4 @@ int main(int argc, char **argv) {
     free_graph(g);
     return 0;
 }
+#endif
