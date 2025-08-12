@@ -1,4 +1,4 @@
-// Example: ./euler_graph 8 6 42 -p
+// rxample: ./euler_graph 8 6 42 -p
 
 #define _XOPEN_SOURCE 700
 #include <stdio.h>
