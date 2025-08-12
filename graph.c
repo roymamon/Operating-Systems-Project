@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    printf("Euler circuit exists. Sequence of vertices (length %d):\n", pathLen);
+    printf("Euler circuit exists. Sequence of vertices:\n");
     for (int i = 0; i < pathLen; ++i) {
         printf("%d%s", path[i], (i + 1 == pathLen ? "\n" : " -> "));
     }

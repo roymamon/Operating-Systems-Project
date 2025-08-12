@@ -1,0 +1,385 @@
+        -:    0:Source:graph.c
+        -:    0:Graph:graph_cov-graph.gcno
+        -:    0:Data:graph_cov-graph.gcda
+        -:    0:Runs:39
+        -:    1:// Simple undirected graph (no loops, no multiedges), Euler circuit check + construction.
+        -:    2:// Build:   gcc -Wall -O2 -o euler_graph euler_graph.c -lm
+        -:    3:// Example: ./euler_graph 8 6 42 -p
+        -:    4:
+        -:    5:#define _XOPEN_SOURCE 700
+        -:    6:#include <stdio.h>
+        -:    7:#include <stdlib.h>
+        -:    8:#include <string.h>
+        -:    9:#include <unistd.h>     // getopt
+        -:   10:#include <time.h>
+        -:   11:#include <math.h>
+        -:   12:#include <errno.h>
+        -:   13:
+        -:   14:typedef struct {
+        -:   15:    int V;      // number of vertices
+        -:   16:    int E;      // number of edges
+        -:   17:    int **adj;  // adjacency matrix (0/1), undirected
+        -:   18:} Graph;
+        -:   19:
+        -:   20:/*------------------ Graph utils ------------------*/
+        -:   21:
+function create_graph called 39 returned 100% blocks executed 57%
+       39:   22:static Graph* create_graph(int V) {
+       39:   23:    Graph *g = malloc(sizeof(Graph));
+      39*:   24:    if (!g) { perror("malloc"); exit(1); }
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+call    2 never executed
+call    3 never executed
+       39:   25:    g->V = V;
+       39:   26:    g->E = 0;
+       39:   27:    g->adj = malloc(V * sizeof(int*));
+      39*:   28:    if (!g->adj) { perror("malloc"); exit(1); }
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+call    2 never executed
+call    3 never executed
+      230:   29:    for (int i = 0; i < V; ++i) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+      191:   30:        g->adj[i] = calloc(V, sizeof(int));
+     191*:   31:        if (!g->adj[i]) { perror("calloc"); exit(1); }
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+call    2 never executed
+call    3 never executed
+        -:   32:    }
+       39:   33:    return g;
+        -:   34:}
+        -:   35:
+function free_graph called 35 returned 100% blocks executed 86%
+       35:   36:static void free_graph(Graph *g) {
+      35*:   37:    if (!g) return;
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+      210:   38:    for (int i = 0; i < g->V; ++i) free(g->adj[i]);
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+       35:   39:    free(g->adj);
+       35:   40:    free(g);
+        -:   41:}
+        -:   42:
+function add_edge called 528 returned 100% blocks executed 91%
+      528:   43:static int add_edge(Graph *g, int u, int v) {
+     528*:   44:    if (u < 0 || v < 0 || u >= g->V || v >= g->V) return 0;
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+branch  2 taken 100% (fallthrough)
+branch  3 taken 0%
+branch  4 taken 100% (fallthrough)
+branch  5 taken 0%
+branch  6 taken 0% (fallthrough)
+branch  7 taken 100%
+      528:   45:    if (u == v) return 0;              // no self-loops
+branch  0 taken 24% (fallthrough)
+branch  1 taken 76%
+      400:   46:    if (g->adj[u][v]) return 0;        // no multiedges
+branch  0 taken 50% (fallthrough)
+branch  1 taken 50%
+      202:   47:    g->adj[u][v] = 1;
+      202:   48:    g->adj[v][u] = 1;
+      202:   49:    g->E++;
+      202:   50:    return 1;
+        -:   51:}
+        -:   52:
+function degree called 517 returned 100% blocks executed 100%
+      517:   53:static int degree(const Graph *g, int u) {
+      517:   54:    int d = 0;
+     3130:   55:    for (int v = 0; v < g->V; ++v) d += g->adj[u][v];
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+      517:   56:    return d;
+        -:   57:}
+        -:   58:
+function print_graph called 31 returned 100% blocks executed 100%
+       31:   59:static void print_graph(const Graph *g) {
+       31:   60:    printf("Graph: V=%d, E=%d\nAdjacency matrix:\n", g->V, g->E);
+call    0 returned 100%
+      186:   61:    for (int i = 0; i < g->V; ++i) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+      942:   62:        for (int j = 0; j < g->V; ++j) {
+branch  0 taken 84%
+branch  1 taken 16% (fallthrough)
+      787:   63:            printf("%d ", g->adj[i][j]);
+call    0 returned 100%
+        -:   64:        }
+      155:   65:        printf("\n");
+call    0 returned 100%
+        -:   66:    }
+       31:   67:}
+        -:   68:
+        -:   69:/*------------------ Random graph generator ------------------*/
+        -:   70:
+function generate_random_graph called 39 returned 90% blocks executed 100%
+       39:   71:static void generate_random_graph(Graph *g, int targetE, unsigned int seed) {
+       39:   72:    srand(seed);
+call    0 returned 100%
+       39:   73:    const long long maxE = (long long)g->V * (g->V - 1) / 2;
+       39:   74:    if (targetE > maxE) {
+branch  0 taken 10% (fallthrough)
+branch  1 taken 90%
+        4:   75:        fprintf(stderr, "Error: cannot place %d edges in a simple graph with V=%d (max=%lld)\n",
+call    0 returned 100%
+        -:   76:                targetE, g->V, maxE);
+        4:   77:        exit(1);
+call    0 returned 0%
+        -:   78:    }
+      563:   79:    while (g->E < targetE) {
+branch  0 taken 94%
+branch  1 taken 6% (fallthrough)
+      528:   80:        int u = rand() % g->V;
+call    0 returned 100%
+      528:   81:        int v = rand() % g->V;
+call    0 returned 100%
+      528:   82:        if (add_edge(g, u, v)) { /* added */ }
+call    0 returned 100%
+        -:   83:    }
+       35:   84:}
+        -:   85:
+        -:   86:/*------------------ Connectivity ------------------*/
+        -:   87:
+function dfs called 158 returned 100% blocks executed 100%
+      158:   88:static void dfs(const Graph *g, int u, int *visited) {
+      158:   89:    visited[u] = 1;
+      950:   90:    for (int v = 0; v < g->V; ++v) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+      792:   91:        if (g->adj[u][v] && !visited[v]) dfs(g, v, visited);
+branch  0 taken 57% (fallthrough)
+branch  1 taken 43%
+branch  2 taken 28% (fallthrough)
+branch  3 taken 72%
+call    4 returned 100%
+        -:   92:    }
+      158:   93:}
+        -:   94:
+function connected_among_non_isolated called 44 returned 100% blocks executed 94%
+       44:   95:static int connected_among_non_isolated(const Graph *g) {
+       44:   96:    int start = -1;
+      106:   97:    for (int i = 0; i < g->V; ++i) if (degree(g, i) > 0) { start = i; break; }
+call    0 returned 100%
+branch  1 taken 34% (fallthrough)
+branch  2 taken 66%
+branch  3 taken 89%
+branch  4 taken 11% (fallthrough)
+       44:   98:    if (start == -1) return 1; // no edges
+branch  0 taken 27% (fallthrough)
+branch  1 taken 73%
+       32:   99:    int *visited = calloc(g->V, sizeof(int));
+       32:  100:    dfs(g, start, visited);
+call    0 returned 100%
+       32:  101:    int ok = 1;
+      190:  102:    for (int i = 0; i < g->V; ++i) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+     158*:  103:        if (degree(g, i) > 0 && !visited[i]) { ok = 0; break; }
+call    0 returned 100%
+branch  1 taken 100% (fallthrough)
+branch  2 taken 0%
+branch  3 taken 0% (fallthrough)
+branch  4 taken 100%
+        -:  104:    }
+       32:  105:    free(visited);
+       32:  106:    return ok;
+        -:  107:}
+        -:  108:
+        -:  109:/*------------------ Euler circuit ------------------*/
+        -:  110:
+function all_even_degrees called 9 returned 100% blocks executed 88%
+        9:  111:static int all_even_degrees(const Graph *g) {
+       54:  112:    for (int i = 0; i < g->V; ++i)
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+      45*:  113:        if (degree(g, i) % 2 != 0) return 0;
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+        9:  114:    return 1;
+        -:  115:}
+        -:  116:
+function euler_circuit called 9 returned 100% blocks executed 94%
+        9:  117:static int euler_circuit(const Graph *g, int **path_out, int *path_len_out) {
+       9*:  118:    if (!connected_among_non_isolated(g)) return 0;
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+       9*:  119:    if (!all_even_degrees(g)) return 0;
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+        -:  120:
+        9:  121:    int **adj = malloc(g->V * sizeof(int*));
+       54:  122:    for (int i = 0; i < g->V; ++i) {
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+       45:  123:        adj[i] = malloc(g->V * sizeof(int));
+       45:  124:        memcpy(adj[i], g->adj[i], g->V * sizeof(int));
+        -:  125:    }
+        9:  126:    int *deg = malloc(g->V * sizeof(int));
+       54:  127:    for (int i = 0; i < g->V; ++i) deg[i] = degree(g, i);
+call    0 returned 100%
+branch  1 taken 83%
+branch  2 taken 17% (fallthrough)
+        -:  128:
+        9:  129:    int start = 0;
+       40:  130:    for (int i = 0; i < g->V; ++i) if (deg[i] > 0) { start = i; break; }
+branch  0 taken 9% (fallthrough)
+branch  1 taken 91%
+branch  2 taken 85%
+branch  3 taken 15% (fallthrough)
+        -:  131:
+        9:  132:    int stackCap = g->E + 2, *stack = malloc(stackCap * sizeof(int)), top = 0;
+        9:  133:    int outCap = g->E + 2, *out = malloc(outCap * sizeof(int)), outLen = 0;
+        -:  134:
+        9:  135:    stack[top++] = start;
+       66:  136:    while (top > 0) {
+branch  0 taken 86%
+branch  1 taken 14% (fallthrough)
+       57:  137:        int u = stack[top - 1], v = -1;
+       57:  138:        if (deg[u] > 0) {
+branch  0 taken 42% (fallthrough)
+branch  1 taken 58%
+       70:  139:            for (int w = 0; w < g->V; ++w) if (adj[u][w]) { v = w; break; }
+branch  0 taken 34% (fallthrough)
+branch  1 taken 66%
+branch  2 taken 100%
+branch  3 taken 0% (fallthrough)
+        -:  140:        }
+       57:  141:        if (v != -1) {
+branch  0 taken 42% (fallthrough)
+branch  1 taken 58%
+       24:  142:            adj[u][v]--; adj[v][u]--;
+       24:  143:            deg[u]--; deg[v]--;
+       24:  144:            stack[top++] = v;
+        -:  145:        } else {
+       33:  146:            out[outLen++] = u;
+       33:  147:            top--;
+        -:  148:        }
+        -:  149:    }
+        -:  150:
+       54:  151:    for (int i = 0; i < g->V; ++i) free(adj[i]);
+branch  0 taken 83%
+branch  1 taken 17% (fallthrough)
+        9:  152:    free(adj); free(deg);
+        -:  153:
+        9:  154:    *path_out = out;
+        9:  155:    *path_len_out = outLen;
+        9:  156:    free(stack);
+        9:  157:    return 1;
+        -:  158:}
+        -:  159:
+        -:  160:/*------------------ Main ------------------*/
+        -:  161:
+function main called 39 returned 90% blocks executed 81%
+       39:  162:int main(int argc, char **argv) {
+       39:  163:    if (argc < 3) {
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+    #####:  164:        fprintf(stderr, "Usage: %s <edges> <vertices> [seed] [-p]\n", argv[0]);
+call    0 never executed
+    #####:  165:        return 1;
+        -:  166:    }
+        -:  167:
+       39:  168:    int E = atoi(argv[1]);
+       39:  169:    int V = atoi(argv[2]);
+       35:  170:    unsigned int seed = (argc >= 4 && argv[3][0] != '-') ?
+branch  0 taken 94% (fallthrough)
+branch  1 taken 6%
+       78:  171:        (unsigned int)strtoul(argv[3], NULL, 10) :
+branch  0 taken 90% (fallthrough)
+branch  1 taken 10%
+call    2 returned 100%
+        6:  172:        (unsigned int)time(NULL);
+call    0 returned 100%
+       39:  173:    int printAdj = 0;
+        -:  174:
+      187:  175:    for (int i = 1; i < argc; i++) {
+branch  0 taken 79%
+branch  1 taken 21% (fallthrough)
+      148:  176:        if (strcmp(argv[i], "-p") == 0) printAdj = 1;
+branch  0 taken 21% (fallthrough)
+branch  1 taken 79%
+        -:  177:    }
+        -:  178:
+       39:  179:    if (V < 1 || E < 0) {
+branch  0 taken 100% (fallthrough)
+branch  1 taken 0%
+branch  2 taken 0% (fallthrough)
+branch  3 taken 100%
+    #####:  180:        fprintf(stderr, "Invalid vertices or edges\n");
+call    0 never executed
+    #####:  181:        return 1;
+        -:  182:    }
+        -:  183:
+       39:  184:    Graph *g = create_graph(V);
+call    0 returned 100%
+       39:  185:    generate_random_graph(g, E, seed);
+call    0 returned 90%
+        -:  186:
+       35:  187:    if (printAdj) print_graph(g);
+branch  0 taken 89% (fallthrough)
+branch  1 taken 11%
+call    2 returned 100%
+        -:  188:
+       35:  189:    if (!connected_among_non_isolated(g)) {
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:  190:        printf("No Euler circuit: graph is disconnected among non-isolated vertices.\n");
+call    0 never executed
+    #####:  191:        free_graph(g);
+call    0 never executed
+    #####:  192:        return 0;
+        -:  193:    }
+        -:  194:
+       35:  195:    int oddCount = 0;
+      210:  196:    for (int i = 0; i < g->V; ++i) if (degree(g, i) % 2 != 0) oddCount++;
+call    0 returned 100%
+branch  1 taken 45% (fallthrough)
+branch  2 taken 55%
+branch  3 taken 83%
+branch  4 taken 17% (fallthrough)
+       35:  197:    if (oddCount != 0) {
+branch  0 taken 74% (fallthrough)
+branch  1 taken 26%
+       26:  198:        printf("No Euler circuit: %d vertices have odd degree.\n", oddCount);
+call    0 returned 100%
+       26:  199:        free_graph(g);
+call    0 returned 100%
+       26:  200:        return 0;
+        -:  201:    }
+        -:  202:
+        9:  203:    int *path = NULL, pathLen = 0;
+        9:  204:    if (!euler_circuit(g, &path, &pathLen)) {
+call    0 returned 100%
+branch  1 taken 0% (fallthrough)
+branch  2 taken 100%
+    #####:  205:        printf("No Euler circuit (unexpected).\n");
+call    0 never executed
+    #####:  206:        free_graph(g);
+call    0 never executed
+    #####:  207:        return 0;
+        -:  208:    }
+        -:  209:
+        9:  210:    printf("Euler circuit exists. Sequence of vertices:\n");
+call    0 returned 100%
+       42:  211:    for (int i = 0; i < pathLen; ++i) {
+branch  0 taken 79%
+branch  1 taken 21% (fallthrough)
+       33:  212:        printf("%d%s", path[i], (i + 1 == pathLen ? "\n" : " -> "));
+branch  0 taken 27% (fallthrough)
+branch  1 taken 73%
+call    2 returned 100%
+        -:  213:    }
+        -:  214:
+        9:  215:    free(path);
+        9:  216:    free_graph(g);
+call    0 returned 100%
+        9:  217:    return 0;
+        -:  218:}
