@@ -324,6 +324,9 @@ static inline void bs_and(Bitset *a, const Bitset *b){
 static inline void bs_minus(Bitset *a, const Bitset *b){
     for (int k=0;k<a->nwords;k++) a->w[k] &= ~b->w[k];
 }
+static inline void bs_clear(Bitset *b, int i){
+    b->w[i>>6] &= ~(UINT64_C(1)<<(i&63));
+}
 
 /* Precompute neighbor masks N[v] as bitsets for quick intersections. */
 typedef struct {
@@ -466,6 +469,69 @@ int max_clique(const Graph *g, int *clique_out, int *clique_size_out){
 
     return S.best_size;
 }
+/*================ Count all cliques of size >= 3 ================*/
+/* Enumerate ALL cliques (not only maximal). No pivot pruning here,
+   because pivot pruning enumerates maximal cliques only. */
+
+static void BK_count_all(Bitset *R, int sizeR, Bitset *P,
+                         const NBMasks *nb, long long *cnt)
+{
+    if (sizeR >= 3) (*cnt)++;  // count this clique
+
+    // We’ll iterate over a snapshot of P, while mutating P as we go
+    Bitset Pc = bs_make(P->nbits);
+    bs_copy(&Pc, P);
+
+    for (int word = 0; word < Pc.nwords; ++word) {
+        uint64_t mask = Pc.w[word];
+        while (mask) {
+            int bit = __builtin_ctzll(mask);
+            int v = (word << 6) + bit;
+            if (v >= Pc.nbits) break;
+            mask &= (mask - 1);
+
+            // Remove v from P
+            bs_clear(P, v);
+
+            // Rp = R ∪ {v}
+            Bitset Rp = bs_make(R->nbits);
+            bs_copy(&Rp, R);
+            bs_set(&Rp, v);
+
+            // P' = P ∩ N(v)
+            Bitset Pp = bs_make(P->nbits);
+            bs_copy(&Pp, P);
+            bs_and(&Pp, &nb->N[v]);
+
+            // Recurse
+            BK_count_all(&Rp, sizeR + 1, &Pp, nb, cnt);
+
+            bs_free(&Rp);
+            bs_free(&Pp);
+        }
+    }
+    bs_free(&Pc);
+}
+
+long long count_cliques_3plus(const Graph *g)
+{
+    const int V = g->V;
+    if (V <= 2) return 0;
+
+    NBMasks nb = nb_build(g);
+
+    Bitset R = bs_make(V);
+    Bitset P = bs_make(V);
+    for (int v = 0; v < V; ++v) bs_set(&P, v);
+
+    long long cnt = 0;
+    BK_count_all(&R, 0, &P, &nb, &cnt);
+
+    bs_free(&R);
+    bs_free(&P);
+    nb_free(&nb);
+    return cnt;
+}
 
 /*------------------ CLI main (compiled out for server) ------------------*/
 #ifndef GRAPH_NO_MAIN
@@ -512,6 +578,13 @@ int main(int argc, char **argv) {
     printf("Vertices: ");
     for (int i=0;i<cs;i++) printf("%d%s", cl[i], (i+1==cs)?"\n":" ");
     free(cl);
+    
+    //number of cliques
+    long long c3 = count_cliques_3plus(g);
+    printf("Number of cliques (sized >= 3): %lld\n", c3);
+
+
+    
 
     // Keep your Euler demo
     if (!connected_among_non_isolated(g)) {
@@ -536,6 +609,7 @@ int main(int argc, char **argv) {
         printf("%d%s", path[i], (i + 1 == pathLen ? "\n" : " -> "));
     }
 
+    
     free(path);
     free_graph(g);
     return 0;

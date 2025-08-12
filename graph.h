@@ -36,3 +36,6 @@ long long mst_weight_prim(const Graph *g);
 // If clique_out != NULL, writes the vertex ids of one maximum clique
 // into clique_out (up to V entries). clique_size_out (if not NULL) gets the size.
 int max_clique(const Graph *g, int *clique_out, int *clique_size_out);
+// Count all cliques of size >= 3 (ignores K1 and K2).
+// Returns the total number of cliques with >=3 vertices.
+long long count_cliques_3plus(const Graph *g);
