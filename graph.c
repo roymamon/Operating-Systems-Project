@@ -1,4 +1,3 @@
-// graph.c
 // Standalone example run (CLI build only): ./graph <edges> <vertices> [seed] [-p]
 
 #define _XOPEN_SOURCE 700
@@ -10,7 +9,13 @@
 #include <unistd.h>
 #include <time.h>
 #include <errno.h>
-#include <math.h>   // (not strictly needed, but kept from prior code)
+#include <limits.h>
+#include <math.h>   // not strictly needed
+
+/* Tunable for random weights */
+#ifndef GRAPH_RAND_WMAX
+#define GRAPH_RAND_WMAX 100   // edges get weights in [1..GRAPH_RAND_WMAX]
+#endif
 
 /*------------------ Graph utils ------------------*/
 
@@ -19,28 +24,41 @@ Graph* create_graph(int V) {
     if (!g) { perror("malloc"); exit(1); }
     g->V = V;
     g->E = 0;
+
     g->adj = malloc(V * sizeof(int*));
     if (!g->adj) { perror("malloc"); exit(1); }
+    g->w   = malloc(V * sizeof(int*));
+    if (!g->w)   { perror("malloc"); exit(1); }
+
     for (int i = 0; i < V; ++i) {
         g->adj[i] = calloc(V, sizeof(int));
         if (!g->adj[i]) { perror("calloc"); exit(1); }
+        g->w[i] = calloc(V, sizeof(int));
+        if (!g->w[i]) { perror("calloc"); exit(1); }
     }
     return g;
 }
 
 void free_graph(Graph *g) {
     if (!g) return;
-    for (int i = 0; i < g->V; ++i) free(g->adj[i]);
+    for (int i = 0; i < g->V; ++i) {
+        free(g->adj[i]);
+        free(g->w[i]);
+    }
     free(g->adj);
+    free(g->w);
     free(g);
 }
 
-static int add_edge(Graph *g, int u, int v) {
+/* internal: add edge with explicit weight (>0) */
+static int add_edge_w(Graph *g, int u, int v, int w) {
     if (u < 0 || v < 0 || u >= g->V || v >= g->V) return 0;
     if (u == v) return 0;              // no self-loops
+    if (w <= 0) return 0;              // positive weights only
     if (g->adj[u][v]) return 0;        // no multiedges
-    g->adj[u][v] = 1;
-    g->adj[v][u] = 1;
+
+    g->adj[u][v] = g->adj[v][u] = 1;
+    g->w[u][v]   = g->w[v][u]   = w;
     g->E++;
     return 1;
 }
@@ -59,6 +77,15 @@ void print_graph(const Graph *g) {
         }
         printf("\n");
     }
+    //If you want, also print weights (commented to keep server output stable)
+    printf("Weights matrix:\n");
+    for (int i = 0; i < g->V; ++i) {
+        for (int j = 0; j < g->V; ++j) {
+            printf("%d ", g->w[i][j]);
+        }
+        printf("\n");
+    }
+    
 }
 
 /*------------------ Random graph generator ------------------*/
@@ -74,7 +101,8 @@ void generate_random_graph(Graph *g, int targetE, unsigned int seed) {
     while (g->E < targetE) {
         int u = rand() % g->V;
         int v = rand() % g->V;
-        (void)add_edge(g, u, v);
+        int w = (rand() % GRAPH_RAND_WMAX) + 1;   // weight in [1..WMAX]
+        (void)add_edge_w(g, u, v, w);
     }
 }
 
@@ -90,7 +118,7 @@ static void dfs(const Graph *g, int u, int *visited) {
 int connected_among_non_isolated(const Graph *g) {
     int start = -1;
     for (int i = 0; i < g->V; ++i) if (degree(g, i) > 0) { start = i; break; }
-    if (start == -1) return 1; // no edges: conventionally Eulerian
+    if (start == -1) return 1; // no edges: treat as Eulerian-trivial
     int *visited = calloc(g->V, sizeof(int));
     if (!visited) { perror("calloc"); exit(1); }
     dfs(g, start, visited);
@@ -172,6 +200,86 @@ int euler_circuit(const Graph *g, int **path_out, int *path_len_out) {
     return 1;
 }
 
+/*------------------ MST (Prim, O(V^2)) ------------------*/
+
+long long mst_weight_prim(const Graph *g) {
+    const int V = g->V;
+    if (V == 0) return 0;
+    if (V == 1) return 0;
+
+    // If any vertex is isolated or graph disconnected, no spanning tree
+    for (int i = 0; i < V; ++i) {
+        if (degree(g, i) == 0) return -1;  // isolated vertex => cannot span all V
+    }
+    // Quick connectivity check (stronger than "among non-isolated")
+    // Do a DFS from 0 and require all vertices to be visited.
+    int *vis = calloc(V, sizeof(int));
+    if (!vis) { perror("calloc"); exit(1); }
+    // reuse local DFS
+    // inline DFS:
+    int stackSize = V, top = 0;
+    int *stack = malloc(stackSize * sizeof(int));
+    if (!stack) { perror("malloc"); exit(1); }
+    stack[top++] = 0; vis[0] = 1;
+    while (top) {
+        int u = stack[--top];
+        for (int v = 0; v < V; ++v) {
+            if (g->adj[u][v] && !vis[v]) {
+                vis[v] = 1;
+                if (top >= stackSize) {
+                    stackSize *= 2;
+                    stack = realloc(stack, stackSize * sizeof(int));
+                    if (!stack) { perror("realloc"); exit(1); }
+                }
+                stack[top++] = v;
+            }
+        }
+    }
+    for (int i = 0; i < V; ++i) {
+        if (!vis[i]) { free(vis); free(stack); return -1; }
+    }
+    free(vis);
+    free(stack);
+
+    // Prim
+    const int INF = INT_MAX / 4;
+    int *key    = malloc(V * sizeof(int));
+    int *inMST  = calloc(V, sizeof(int));
+    if (!key || !inMST) { perror("malloc"); exit(1); }
+
+    for (int i = 0; i < V; ++i) key[i] = INF;
+    key[0] = 0;
+
+    long long total = 0;
+
+    for (int it = 0; it < V; ++it) {
+        int u = -1, best = INF;
+        for (int i = 0; i < V; ++i) {
+            if (!inMST[i] && key[i] < best) {
+                best = key[i]; u = i;
+            }
+        }
+        if (u == -1 || best == INF) {  // disconnected (shouldn’t happen after check)
+            free(key); free(inMST);
+            return -1;
+        }
+        inMST[u] = 1;
+        total += (it == 0 ? 0 : best);
+
+        // relax neighbors
+        for (int v = 0; v < V; ++v) {
+            if (!inMST[v] && g->adj[u][v]) {
+                int w = g->w[u][v];
+                if (w < key[v]) key[v] = w;
+            }
+        }
+    }
+
+    free(key);
+    free(inMST);
+    return total;
+}
+
 /*------------------ CLI main (compiled out for server) ------------------*/
 #ifndef GRAPH_NO_MAIN
 int main(int argc, char **argv) {
@@ -201,6 +309,15 @@ int main(int argc, char **argv) {
 
     if (printAdj) print_graph(g);
 
+    // Example: show MST too (optional)
+    long long mst = mst_weight_prim(g);
+    if (mst >= 0) {
+        printf("MST total weight: %lld\n", mst);
+    } else {
+        printf("MST: graph is not connected (no spanning tree)\n");
+    }
+
+    // Keep your Euler demo
     if (!connected_among_non_isolated(g)) {
         printf("No Euler circuit: graph is disconnected among non-isolated vertices.\n");
         free_graph(g);
