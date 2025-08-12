@@ -39,3 +39,8 @@ int max_clique(const Graph *g, int *clique_out, int *clique_size_out);
 // Count all cliques of size >= 3 (ignores K1 and K2).
 // Returns the total number of cliques with >=3 vertices.
 long long count_cliques_3plus(const Graph *g);
+// Hamiltonian circuit (cycle).
+// Returns 1 if a Hamiltonian cycle exists; fills *cycle_out with V+1 vertices
+// (cycle[0] == cycle[V]) and *cycle_len_out = V+1. Returns 0 if none exists.
+// Caller must free(*cycle_out) on success.
+int hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out);

@@ -533,6 +533,67 @@ long long count_cliques_3plus(const Graph *g)
     return cnt;
 }
 
+/*======================  Hamiltonian Cycle (backtracking)  ======================*/
+
+static int ham_backtrack(const Graph *g, int start, int pos, int *path, unsigned char *used) {
+    if (pos == g->V) {
+        int last = path[g->V - 1];
+        return g->adj[last][start] ? 1 : 0;  // close the cycle
+    }
+
+    int prev = path[pos - 1];
+    // Try neighbors of prev
+    for (int v = 0; v < g->V; ++v) {
+        if (!g->adj[prev][v]) continue;      // must be adjacent
+        if (used[v]) continue;               // must be unused
+        // small pruning: avoid dead ends early
+        if (degree(g, v) < 2) continue;
+
+        used[v] = 1;
+        path[pos] = v;
+        if (ham_backtrack(g, start, pos + 1, path, used)) return 1;
+        used[v] = 0;
+    }
+    return 0;
+}
+
+int hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out) {
+    if (!g || g->V < 3) return 0;
+
+    // Basic feasibility checks
+    if (!connected_among_non_isolated(g)) return 0;
+    for (int i = 0; i < g->V; ++i) {
+        if (degree(g, i) < 2) return 0;  // every vertex in a cycle needs degree >= 2
+    }
+
+    int *path = (int *)malloc((size_t)g->V * sizeof(int));
+    if (!path) { perror("malloc"); exit(1); }
+    unsigned char *used = (unsigned char *)calloc((size_t)g->V, 1);
+    if (!used) { perror("calloc"); exit(1); }
+
+    int start = 0;                 // fix an arbitrary start (eliminates cyclic symmetries)
+    path[0] = start;
+    used[start] = 1;
+
+    int found = ham_backtrack(g, start, 1, path, used);
+
+    free(used);
+
+    if (!found) { free(path); return 0; }
+
+    // Marshal output as V+1 vertices to close the cycle
+    int *cycle = (int *)malloc((size_t)(g->V + 1) * sizeof(int));
+    if (!cycle) { perror("malloc"); exit(1); }
+    for (int i = 0; i < g->V; ++i) cycle[i] = path[i];
+    cycle[g->V] = path[0];
+
+    free(path);
+
+    if (cycle_out) *cycle_out = cycle; else free(cycle);
+    if (cycle_len_out) *cycle_len_out = g->V + 1;
+    return 1;
+}
+
 /*------------------ CLI main (compiled out for server) ------------------*/
 #ifndef GRAPH_NO_MAIN
 int main(int argc, char **argv) {
@@ -583,7 +644,17 @@ int main(int argc, char **argv) {
     long long c3 = count_cliques_3plus(g);
     printf("Number of cliques (sized >= 3): %lld\n", c3);
 
-
+    //hamilton cycle
+    int *hc = NULL, hlen = 0;
+    if (hamilton_cycle(g, &hc, &hlen)) {
+    printf("Hamiltonian cycle found: ");
+    for (int i = 0; i < hlen; ++i) {
+        printf("%d%s", hc[i], (i + 1 == hlen) ? "\n" : " -> ");
+    }
+    free(hc);
+    } else {
+      printf("No Hamiltonian cycle.\n");
+    }
     
 
     // Keep your Euler demo
