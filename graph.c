@@ -11,7 +11,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <math.h>   // not strictly needed
-
+#include <stdint.h>
 /* Tunable for random weights */
 #ifndef GRAPH_RAND_WMAX
 #define GRAPH_RAND_WMAX 100   // edges get weights in [1..GRAPH_RAND_WMAX]
@@ -280,6 +280,193 @@ long long mst_weight_prim(const Graph *g) {
     return total;
 }
 
+/*======================  Maximum Clique  ======================*/
+/* Bron–Kerbosch with pivot, implemented using dynamic bitsets. */
+
+/* ---- tiny dynamic bitset ---- */
+typedef struct {
+    int nbits;
+    int nwords;          // = (nbits + 63) / 64
+    uint64_t *w;         // length nwords
+} Bitset;
+
+static Bitset bs_make(int nbits) {
+    Bitset b;
+    b.nbits = nbits;
+    b.nwords = (nbits + 63) / 64;
+    b.w = calloc((size_t)b.nwords, sizeof(uint64_t));
+    if (!b.w) { perror("calloc"); exit(1); }
+    return b;
+}
+static void bs_free(Bitset *b) { free(b->w); b->w = NULL; }
+static inline void bs_zero(Bitset *b){ memset(b->w, 0, b->nwords*sizeof(uint64_t)); }
+static inline void bs_set(Bitset *b, int i){ b->w[i>>6] |= (UINT64_C(1)<<(i&63)); }
+static inline int  bs_test(const Bitset *b, int i){ return (int)((b->w[i>>6]>>(i&63))&1U); }
+static inline void bs_copy(Bitset *dst, const Bitset *src){
+    memcpy(dst->w, src->w, (size_t)dst->nwords * sizeof(uint64_t));
+}
+static int bs_empty(const Bitset *b) {
+    for (int k = 0; k < b->nwords; k++) {
+        if (b->w[k])
+            return 0;
+    }
+    return 1;
+}
+static inline int  bs_count(const Bitset *b){
+    int s=0; for(int k=0;k<b->nwords;k++) s += __builtin_popcountll(b->w[k]); return s;
+}
+static inline void bs_or(Bitset *a, const Bitset *b){
+    for (int k=0;k<a->nwords;k++) a->w[k] |= b->w[k];
+}
+static inline void bs_and(Bitset *a, const Bitset *b){
+    for (int k=0;k<a->nwords;k++) a->w[k] &= b->w[k];
+}
+static inline void bs_minus(Bitset *a, const Bitset *b){
+    for (int k=0;k<a->nwords;k++) a->w[k] &= ~b->w[k];
+}
+
+/* Precompute neighbor masks N[v] as bitsets for quick intersections. */
+typedef struct {
+    int V;
+    Bitset *N;          // array length V, each a bitset of neighbors of v
+} NBMasks;
+
+static NBMasks nb_build(const Graph *g){
+    NBMasks nb; nb.V = g->V;
+    nb.N = malloc((size_t)g->V * sizeof(Bitset));
+    if (!nb.N) { perror("malloc"); exit(1); }
+    for (int v=0; v<g->V; ++v){
+        nb.N[v] = bs_make(g->V);
+        for (int u=0; u<g->V; ++u) if (g->adj[v][u]) bs_set(&nb.N[v], u);
+    }
+    return nb;
+}
+static void nb_free(NBMasks *nb){
+    if (!nb->N) return;
+    for (int v=0; v<nb->V; ++v) bs_free(&nb->N[v]);
+    free(nb->N); nb->N=NULL;
+}
+
+/* Choose a pivot u from P∪X that maximizes |P ∩ N(u)| (Tomita pivot) */
+static int choose_pivot(const Bitset *P, const Bitset *X, const NBMasks *nb){
+    // U = P ∪ X
+    Bitset U = bs_make(P->nbits);
+    bs_copy(&U, P); bs_or(&U, X);
+
+    int best_u = -1, best_deg = -1;
+    for (int word=0; word<U.nwords; ++word){
+        uint64_t w = U.w[word];
+        while (w){
+            int bit = __builtin_ctzll(w);
+            int u = (word<<6) + bit;
+            if (u >= U.nbits) break;
+            // deg = |P ∩ N(u)|
+            Bitset tmp = bs_make(P->nbits);
+            bs_copy(&tmp, P);
+            bs_and(&tmp, &nb->N[u]);
+            int deg = bs_count(&tmp);
+            bs_free(&tmp);
+            if (deg > best_deg){ best_deg = deg; best_u = u; }
+            w &= (w-1);
+        }
+    }
+    bs_free(&U);
+    return best_u;     // may be -1 if P and X empty (base case)
+}
+
+/* Global best (kept local to the call via a small struct). */
+typedef struct {
+    int best_size;
+    Bitset best_R;
+    const NBMasks *nb;
+} BKState;
+
+static void BK_recurse(Bitset *R, Bitset *P, Bitset *X, BKState *S){
+    if (bs_empty(P) && bs_empty(X)){
+        int sz = bs_count(R);
+        if (sz > S->best_size){
+            S->best_size = sz;
+            bs_copy(&S->best_R, R);
+        }
+        return;
+    }
+
+    int u = choose_pivot(P, X, S->nb);        // pivot
+    Bitset P_without_Nu = bs_make(P->nbits);
+    bs_copy(&P_without_Nu, P);
+    if (u >= 0) bs_minus(&P_without_Nu, &S->nb->N[u]);
+
+    // Iterate vertices v in P \ N(u)
+    for (int word=0; word<P_without_Nu.nwords; ++word){
+        uint64_t w = P_without_Nu.w[word];
+        while (w){
+            int bit = __builtin_ctzll(w);
+            int v = (word<<6) + bit;
+            if (v >= P_without_Nu.nbits) break;
+
+            // R' = R ∪ {v}
+            Bitset Rp = bs_make(R->nbits); bs_copy(&Rp, R); bs_set(&Rp, v);
+
+            // P' = P ∩ N(v), X' = X ∩ N(v)
+            Bitset Pp = bs_make(P->nbits); bs_copy(&Pp, P); bs_and(&Pp, &S->nb->N[v]);
+            Bitset Xp = bs_make(X->nbits); bs_copy(&Xp, X); bs_and(&Xp, &S->nb->N[v]);
+
+            // Branch
+            BK_recurse(&Rp, &Pp, &Xp, S);
+
+            // P = P \ {v}; X = X ∪ {v}
+            Bitset singleton = bs_make(P->nbits); bs_set(&singleton, v);
+            bs_minus(P, &singleton);
+            bs_or(X, &singleton);
+            bs_free(&singleton);
+
+            bs_free(&Rp); bs_free(&Pp); bs_free(&Xp);
+
+            w &= (w-1); // next set bit in P_without_Nu word
+        }
+    }
+    bs_free(&P_without_Nu);
+}
+
+int max_clique(const Graph *g, int *clique_out, int *clique_size_out){
+    const int V = g->V;
+    NBMasks nb = nb_build(g);
+
+    Bitset R = bs_make(V), P = bs_make(V), X = bs_make(V);
+    for (int v=0; v<V; ++v) bs_set(&P, v);
+
+    BKState S;
+    S.best_size = 0;
+    S.best_R = bs_make(V);
+    S.nb = &nb;
+
+    BK_recurse(&R, &P, &X, &S);
+
+    // Marshal result
+    if (clique_out){
+        int k = 0;
+        for (int word=0; word<S.best_R.nwords; ++word){
+            uint64_t w = S.best_R.w[word];
+            while (w){
+                int bit = __builtin_ctzll(w);
+                int v = (word<<6) + bit;
+                if (v < V) clique_out[k++] = v;
+                w &= (w-1);
+            }
+        }
+        if (clique_size_out) *clique_size_out = S.best_size;
+    } else if (clique_size_out){
+        *clique_size_out = S.best_size;
+    }
+
+    // cleanup
+    bs_free(&R); bs_free(&P); bs_free(&X);
+    bs_free(&S.best_R);
+    nb_free(&nb);
+
+    return S.best_size;
+}
+
 /*------------------ CLI main (compiled out for server) ------------------*/
 #ifndef GRAPH_NO_MAIN
 int main(int argc, char **argv) {
@@ -316,6 +503,15 @@ int main(int argc, char **argv) {
     } else {
         printf("MST: graph is not connected (no spanning tree)\n");
     }
+
+    //example max clique
+    int *cl = malloc(g->V * sizeof(int));
+    int cs = 0;
+    int sz = max_clique(g, cl, &cs);
+    printf("Max clique size = %d\n", sz);
+    printf("Vertices: ");
+    for (int i=0;i<cs;i++) printf("%d%s", cl[i], (i+1==cs)?"\n":" ");
+    free(cl);
 
     // Keep your Euler demo
     if (!connected_among_non_isolated(g)) {

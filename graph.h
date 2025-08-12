@@ -30,3 +30,9 @@ void   print_graph(const Graph *g);
    Returns total MST weight, or -1 if the graph is not fully connected
    (e.g., any isolated vertex or disconnected). */
 long long mst_weight_prim(const Graph *g);
+
+// ---- Max Clique (Bron–Kerbosch with pivot) ----
+// Returns the size of a maximum clique.
+// If clique_out != NULL, writes the vertex ids of one maximum clique
+// into clique_out (up to V entries). clique_size_out (if not NULL) gets the size.
+int max_clique(const Graph *g, int *clique_out, int *clique_size_out);
