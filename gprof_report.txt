@@ -1,5 +1,5 @@
 make graph_gprof
-./graph_gprof 500500 1001 1 then gprof
+./graph_gprof 500500 1001 1
 ./graph_gprof gmon.out > report.txt
 Flat profile:
 
