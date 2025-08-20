@@ -5,7 +5,7 @@ typedef struct {
     int V;      // number of vertices
     int E;      // number of edges
     int **adj;  // adjacency matrix (0/1), undirected
-    int **w;    // weight matrix; valid only where adj[u][v]==1 (symmetric, positive)
+    int **w;    // symmetric positive weights where adj[u][v]==1
 } Graph;
 
 /* Construction / teardown */
@@ -20,27 +20,22 @@ int    degree(const Graph *g, int u);
 int    connected_among_non_isolated(const Graph *g);
 int    all_even_degrees(const Graph *g);
 
-/* Euler circuit (Hierholzer). Returns 1 on success and fills (path,path_len). */
-int    euler_circuit(const Graph *g, int **path_out, int *path_len_out);
-
 /* Optional debug */
 void   print_graph(const Graph *g);
 
-/* ---- New: MST (Prim, O(V^2)) ----
-   Returns total MST weight, or -1 if the graph is not fully connected
-   (e.g., any isolated vertex or disconnected). */
+/* Euler circuit (Hierholzer). Returns 1 on success and fills (path,path_len). */
+int    euler_circuit(const Graph *g, int **path_out, int *path_len_out);
+
+/* MST (Prim, O(V^2)). Returns total weight, or -1 if disconnected. */
 long long mst_weight_prim(const Graph *g);
 
-// ---- Max Clique (Bron–Kerbosch with pivot) ----
-// Returns the size of a maximum clique.
-// If clique_out != NULL, writes the vertex ids of one maximum clique
-// into clique_out (up to V entries). clique_size_out (if not NULL) gets the size.
-int max_clique(const Graph *g, int *clique_out, int *clique_size_out);
-// Count all cliques of size >= 3 (ignores K1 and K2).
-// Returns the total number of cliques with >=3 vertices.
+/* Max Clique (Bron–Kerbosch with pivot). Returns size.
+   If clique_out != NULL, writes vertex ids into clique_out (up to V). 
+   If clique_size_out != NULL, writes size there too. */
+int    max_clique(const Graph *g, int *clique_out, int *clique_size_out);
+
+/* Count all cliques of size >= 3. */
 long long count_cliques_3plus(const Graph *g);
-// Hamiltonian circuit (cycle).
-// Returns 1 if a Hamiltonian cycle exists; fills *cycle_out with V+1 vertices
-// (cycle[0] == cycle[V]) and *cycle_len_out = V+1. Returns 0 if none exists.
-// Caller must free(*cycle_out) on success.
-int hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out);
+
+/* Hamiltonian cycle: returns 1 and fills (cycle, len=V+1) if found; else 0. */
+int    hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out);

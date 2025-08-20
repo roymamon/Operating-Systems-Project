@@ -3,6 +3,8 @@
         "string.h": "c",
         "stdio.h": "c",
         "unistd.h": "c",
-        "math.h": "c"
+        "math.h": "c",
+        "graph.h": "c",
+        "errno.h": "c"
     }
 }
