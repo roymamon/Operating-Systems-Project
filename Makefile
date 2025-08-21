@@ -1,8 +1,8 @@
 # Makefile — builds graph CLI, server (factory+strategy), client
 
 CC      = gcc
-CFLAGS  = -Wall -Wextra -O2
-LDFLAGS = -lm
+CFLAGS  = -Wall -Wextra -O2 -pthread
+LDFLAGS = -lm -pthread
 
 all: graph server client
 
@@ -21,7 +21,7 @@ server: server.c algo.o graph_obj.o algo.h graph.h
 	$(CC) $(CFLAGS) -o $@ server.c algo.o graph_obj.o $(LDFLAGS)
 
 client: client.c
-	$(CC) $(CFLAGS) -o $@ client.c
+	$(CC) $(CFLAGS) -o $@ client.c $(LDFLAGS)
 
 # Instrumented builds (optional)
 graph_gprof: graph.c graph.h

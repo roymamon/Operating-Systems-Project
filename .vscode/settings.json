@@ -5,6 +5,7 @@
         "unistd.h": "c",
         "math.h": "c",
         "graph.h": "c",
-        "errno.h": "c"
+        "errno.h": "c",
+        "stddef.h": "c"
     }
 }

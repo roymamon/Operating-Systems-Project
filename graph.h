@@ -15,6 +15,10 @@ void   free_graph(Graph *g);
 /* Random generator (assigns random positive weights to added edges) */
 void   generate_random_graph(Graph *g, int targetE, unsigned int seed);
 
+/* Add a single undirected edge (u,v) with positive weight w (default 1 if <=0).
+   Returns 1 if added, 0 if invalid/duplicate/self-loop/out-of-range. */
+int    graph_add_edge(Graph *g, int u, int v, int w);
+
 /* Helpers and checks */
 int    degree(const Graph *g, int u);
 int    connected_among_non_isolated(const Graph *g);
@@ -29,9 +33,7 @@ int    euler_circuit(const Graph *g, int **path_out, int *path_len_out);
 /* MST (Prim, O(V^2)). Returns total weight, or -1 if disconnected. */
 long long mst_weight_prim(const Graph *g);
 
-/* Max Clique (Bron–Kerbosch with pivot). Returns size.
-   If clique_out != NULL, writes vertex ids into clique_out (up to V). 
-   If clique_size_out != NULL, writes size there too. */
+/* Max Clique (Bron–Kerbosch with pivot). */
 int    max_clique(const Graph *g, int *clique_out, int *clique_size_out);
 
 /* Count all cliques of size >= 3. */

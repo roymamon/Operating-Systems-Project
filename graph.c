@@ -63,6 +63,16 @@ static int add_edge_w(Graph *g, int u, int v, int w) {
     return 1;
 }
 
+/* internal: add edge with explicit weight (>0) */
+// static int add_edge_w(Graph *g, int u, int v, int w) { ... }  // you already have this
+
+int graph_add_edge(Graph *g, int u, int v, int w) {
+    if (w <= 0) w = 1;
+    // add_edge_w is your existing internal function
+    extern int add_edge_w(Graph *g, int u, int v, int w); // forward for old compilers
+    return add_edge_w(g, u, v, w);
+}
+
 int degree(const Graph *g, int u) {
     int d = 0;
     for (int v = 0; v < g->V; ++v) d += g->adj[u][v];
