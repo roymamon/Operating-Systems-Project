@@ -1,4 +1,3 @@
-// algo.c — concrete strategies using your graph.c algorithms
 #define _XOPEN_SOURCE 700
 #include "algo.h"
 #include <stdarg.h>
@@ -6,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* small helper to emit formatted lines */
 static void emitf(EmitFn emit, void *ctx, const char *fmt, ...) {
     char buf[4096];
     va_list ap;
@@ -16,7 +14,6 @@ static void emitf(EmitFn emit, void *ctx, const char *fmt, ...) {
     emit(ctx, buf);
 }
 
-/* ---------------- EULER strategy ---------------- */
 static void strat_euler_run(const Graph *g, EmitFn emit, void *ctx) {
     if (!connected_among_non_isolated(g)) {
         emitf(emit, ctx, "No Euler circuit: graph is disconnected among non-isolated vertices.\n");
@@ -40,14 +37,12 @@ static void strat_euler_run(const Graph *g, EmitFn emit, void *ctx) {
     free(path);
 }
 
-/* ---------------- MST strategy ---------------- */
 static void strat_mst_run(const Graph *g, EmitFn emit, void *ctx) {
     long long w = mst_weight_prim(g);
     if (w < 0) emitf(emit, ctx, "MST: graph is not connected (no spanning tree)\n");
     else       emitf(emit, ctx, "MST total weight: %lld\n", w);
 }
 
-/* ---------------- MAXCLIQUE strategy ---------------- */
 static void strat_maxclique_run(const Graph *g, EmitFn emit, void *ctx) {
     int *cl = (int*)malloc((size_t)g->V * sizeof(int));
     if (!cl) { emitf(emit, ctx, "ERR: out of memory\n"); return; }
@@ -62,13 +57,11 @@ static void strat_maxclique_run(const Graph *g, EmitFn emit, void *ctx) {
     free(cl);
 }
 
-/* ---------------- COUNT CLQ >=3 strategy ---------------- */
 static void strat_countclq3p_run(const Graph *g, EmitFn emit, void *ctx) {
     long long cnt = count_cliques_3plus(g);
     emitf(emit, ctx, "Number of cliques (size >= 3): %lld\n", cnt);
 }
 
-/* ---------------- HAMILTON strategy ---------------- */
 static void strat_hamilton_run(const Graph *g, EmitFn emit, void *ctx) {
     int *cyc = NULL, L = 0;
     if (!hamilton_cycle(g, &cyc, &L)) {
@@ -81,7 +74,6 @@ static void strat_hamilton_run(const Graph *g, EmitFn emit, void *ctx) {
     free(cyc);
 }
 
-/* ---------------- Factory ---------------- */
 typedef struct { const char *name; void (*run)(const Graph*, EmitFn, void*); } Pair;
 static const Pair TABLE[] = {
     {"EULER",      strat_euler_run},
@@ -92,7 +84,7 @@ static const Pair TABLE[] = {
 };
 
 const AlgoStrategy* make_strategy(const char *cmd) {
-    static AlgoStrategy strat; // returned by address; contents filled per lookup
+    static AlgoStrategy strat; 
     for (size_t i = 0; i < sizeof(TABLE)/sizeof(TABLE[0]); ++i) {
         if (strcmp(cmd, TABLE[i].name) == 0) {
             strat.name = TABLE[i].name;

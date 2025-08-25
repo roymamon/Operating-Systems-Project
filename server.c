@@ -1,16 +1,11 @@
-// server.c — Multithreaded Pipeline with Active Objects (+ LF accept)
-// Requests we support (per your spec):
-//   A) Back-compat RANDOM (single header line):
-//        <ALGO> <E> <V> <SEED> [-p]
-//   C) Explicit GRAPH (edges follow; NOTE: order is <E> <V>):
-//        <ALGO> GRAPH <E> <V> [-p]\n
-//        (then E lines: "u v [w]\n" ; undirected; weight optional->default 1)
-//
-// ALGO ∈ {EULER, MST, MAXCLIQUE, COUNTCLQ3P, HAMILTON}
-// Use -p to also print adjacency matrix to the client.
-//
-// Build: make (uses -pthread)
-// Run:   ./server <port> [threads]     <-- threads are LF acceptor pool only
+//A) Back-compat RANDOM (single header line):
+//<ALGO> <E> <V> <SEED> [-p]
+//B) Explicit GRAPH (edges follow; NOTE: order is <E> <V>):
+//<ALGO> GRAPH <E> <V> [-p]\n
+//(then E lines: "u v [w]\n" ; undirected; weight optional->default 1)
+//ALGO ∈ {EULER, MST, MAXCLIQUE, COUNTCLQ3P, HAMILTON}
+//Use -p to also print adjacency matrix to the client.
+// Run:   ./server <port> [threads]
 
 #define _XOPEN_SOURCE 700
 #include <arpa/inet.h>
@@ -33,7 +28,6 @@
 #define BACKLOG   64
 #define MAX_LINE  8192
 
-/* ---------- Small helpers ---------- */
 
 static int write_all(int fd, const void *buf, size_t n) {
     const char *p = (const char*)buf; size_t left = n;
@@ -77,7 +71,6 @@ static bool parse_uint(const char *s, unsigned int *out) {
     *out = (unsigned int)v; return true;
 }
 
-/* ---------- Growable string ---------- */
 typedef struct {
     char *buf; size_t len, cap;
 } StrBuf;
@@ -114,7 +107,6 @@ static void sb_printf(StrBuf *s, const char *fmt, ...) {
     free(big);
 }
 
-/* ---------- Simple MPMC queue for Active Objects ---------- */
 typedef struct QNode {
     void *item;
     struct QNode *next;
@@ -149,7 +141,6 @@ static void* q_pop(Queue *q){
     void *it = n->item; free(n); return it;
 }
 
-/* ---------- Active Object scaffold ---------- */
 typedef struct ActiveObject ActiveObject;
 typedef void (*AOHandler)(ActiveObject*, void*);
 
@@ -158,7 +149,6 @@ struct ActiveObject {
     Queue q;
     pthread_t tid;
     AOHandler handle;
-    // Optionally a next stage; our algos send to a global Sender instead.
 };
 
 static void* ao_thread_main(void *arg){
@@ -178,25 +168,23 @@ static void ao_start(ActiveObject *ao, const char *name, AOHandler h){
     pthread_detach(ao->tid);
 }
 
-/* ---------- Request & pipeline items ---------- */
 
 typedef enum {
     CMD_EULER, CMD_MST, CMD_MAXCLIQUE, CMD_COUNTCLQ3P, CMD_HAMILTON
 } AlgoCmd;
 
 typedef struct {
-    int cfd;                // client socket
-    AlgoCmd cmd;            // which AO to route to
-    Graph *g;               // built graph
-    char  *prefix;          // optional adjacency text when -p
+    int cfd;                
+    AlgoCmd cmd;            
+    Graph *g;               
+    char  *prefix;          
 } Request;
 
 typedef struct {
-    int cfd;                // client socket
-    char *text;             // full response to send
+    int cfd;                
+    char *text;             
 } SendTask;
 
-/* ---------- Sender Active Object ---------- */
 static ActiveObject AO_SENDER;
 
 static void handle_send(ActiveObject *ao, void *item){
@@ -208,7 +196,6 @@ static void handle_send(ActiveObject *ao, void *item){
     free(s);
 }
 
-/* ---------- Helpers to complete a request into a SendTask ---------- */
 static void emit_and_send(Request *R, const char *body){
     StrBuf out; sb_init(&out);
     if (R->prefix) sb_append(&out, R->prefix, strlen(R->prefix));
@@ -217,7 +204,7 @@ static void emit_and_send(Request *R, const char *body){
     SendTask *S = (SendTask*)malloc(sizeof(SendTask));
     if (!S) { perror("malloc"); exit(1); }
     S->cfd = R->cfd;
-    S->text = out.buf; // transfer ownership
+    S->text = out.buf; 
 
     q_push(&AO_SENDER.q, S);
 
@@ -226,10 +213,8 @@ static void emit_and_send(Request *R, const char *body){
     free(R);
 }
 
-/* ---------- Algorithm Active Objects (≥4) ---------- */
 static ActiveObject AO_EULER, AO_MST, AO_MAXCLQ, AO_CNTCLQ3P, AO_HAM;
 
-/* EULER */
 static void handle_euler(ActiveObject *ao, void *item){
     (void)ao;
     Request *R = (Request*)item;
@@ -259,7 +244,6 @@ static void handle_euler(ActiveObject *ao, void *item){
     sb_free(&b);
 }
 
-/* MST */
 static void handle_mst(ActiveObject *ao, void *item){
     (void)ao;
     Request *R = (Request*)item;
@@ -271,7 +255,6 @@ static void handle_mst(ActiveObject *ao, void *item){
     sb_free(&b);
 }
 
-/* MAXCLIQUE */
 static void handle_maxclq(ActiveObject *ao, void *item){
     (void)ao;
     Request *R = (Request*)item;
@@ -288,7 +271,6 @@ static void handle_maxclq(ActiveObject *ao, void *item){
     sb_free(&b);
 }
 
-/* COUNTCLQ3P */
 static void handle_cntclq3p(ActiveObject *ao, void *item){
     (void)ao;
     Request *R = (Request*)item;
@@ -299,7 +281,6 @@ static void handle_cntclq3p(ActiveObject *ao, void *item){
     sb_free(&b);
 }
 
-/* HAMILTON */
 static void handle_ham(ActiveObject *ao, void *item){
     (void)ao;
     Request *R = (Request*)item;
@@ -317,7 +298,6 @@ static void handle_ham(ActiveObject *ao, void *item){
     sb_free(&b);
 }
 
-/* ---------- Adjacency dump helper ---------- */
 static char* make_prefix_if_p(const Graph *g, bool want_print){
     if (!want_print) return NULL;
     StrBuf b; sb_init(&b);
@@ -326,18 +306,15 @@ static char* make_prefix_if_p(const Graph *g, bool want_print){
         for (int j=0;j<g->V;++j) sb_printf(&b, "%d ", g->adj[i][j]);
         sb_printf(&b, "\n");
     }
-    return b.buf; // caller frees
+    return b.buf; 
 }
 
-/* ---------- Leader–Follower acceptor ---------- */
 
 static int g_listen_fd = -1;
-/* LF control (one leader at a time) */
 static pthread_mutex_t lf_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  lf_cv  = PTHREAD_COND_INITIALIZER;
 static int has_leader = 0;
 
-/* Guard the rand() used in generate_random_graph */
 static pthread_mutex_t rng_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static void route_to_ao(Request *R){
@@ -347,7 +324,7 @@ static void route_to_ao(Request *R){
         case CMD_MAXCLIQUE:  q_push(&AO_MAXCLQ.q, R); break;
         case CMD_COUNTCLQ3P: q_push(&AO_CNTCLQ3P.q, R); break;
         case CMD_HAMILTON:   q_push(&AO_HAM.q, R); break;
-        default: // should not happen
+        default: 
             close(R->cfd); free_graph(R->g); free(R->prefix); free(R);
     }
 }
@@ -358,7 +335,6 @@ static void handle_client_header_and_dispatch(int cfd) {
     char line[MAX_LINE];
     if (read_line_req(cfd, line, sizeof(line)) <= 0) { close(cfd); return; }
 
-    // tokenize first line
     char *tok[8]; int ntok=0;
     for (char *p=strtok(line," \t\r\n"); p && ntok<8; p=strtok(NULL," \t\r\n")) tok[ntok++]=p;
 
@@ -385,7 +361,6 @@ static void handle_client_header_and_dispatch(int cfd) {
     Graph *g = NULL;
 
     if (strcmp(tok[1], "GRAPH") == 0) {
-        // <ALGO> GRAPH <E> <V> [-p]
         if (ntok < 4 || ntok > 5) { sendf_fd(cfd, "ERR usage: <ALGO> GRAPH <E> <V> [-p]\n"); close(cfd); return; }
         if (!parse_int(tok[2], &E) || !parse_int(tok[3], &V)) { sendf_fd(cfd, "ERR bad <E> or <V>\n"); close(cfd); return; }
         if (ntok == 5) {
@@ -397,7 +372,6 @@ static void handle_client_header_and_dispatch(int cfd) {
         if ((long long)E > maxE) { sendf_fd(cfd, "ERR invalid: E <= V*(V-1)/2 (max=%lld)\n", maxE); close(cfd); return; }
 
         g = create_graph(V);
-        // read E lines: u v [w]
         for (int i=0;i<E;++i){
             char el[256];
             if (read_line_req(cfd, el, sizeof(el)) <= 0) {
@@ -413,7 +387,6 @@ static void handle_client_header_and_dispatch(int cfd) {
             (void)graph_add_edge(g, u, v, w); // ignore duplicates
         }
     } else {
-        // Back-compat RANDOM: <ALGO> <E> <V> <SEED> [-p]
         if (ntok < 4 || ntok > 5) { sendf_fd(cfd, "ERR usage: <ALGO> <E> <V> <SEED> [-p]\n"); close(cfd); return; }
         if (!parse_int(tok[1], &E) || !parse_int(tok[2], &V) || !parse_uint(tok[3], &seed)) {
             sendf_fd(cfd, "ERR bad params.\n"); close(cfd); return;
@@ -460,12 +433,10 @@ static void *worker_main(void *arg){
         if (cfd < 0) { if (err == EINTR) continue; continue; }
 
         handle_client_header_and_dispatch(cfd);
-        // Sender AO will close the cfd after writing response.
     }
     return NULL;
 }
 
-/* ---------- main ---------- */
 
 int main(int argc, char **argv){
     if (argc < 2 || argc > 3) {
@@ -482,7 +453,6 @@ int main(int argc, char **argv){
     }
     if (nthreads < 1) nthreads = 1;
 
-    // Start Active Objects: Sender + 5 algorithms (≥4 required)
     ao_start(&AO_SENDER,   "SENDER",      handle_send);
     ao_start(&AO_EULER,    "EULER_AO",    handle_euler);
     ao_start(&AO_MST,      "MST_AO",      handle_mst);
@@ -490,7 +460,6 @@ int main(int argc, char **argv){
     ao_start(&AO_CNTCLQ3P, "COUNTCLQ3P_AO",handle_cntclq3p);
     ao_start(&AO_HAM,      "HAMILTON_AO", handle_ham);
 
-    // Listen
     g_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (g_listen_fd < 0) { perror("socket"); return 1; }
     int yes = 1; setsockopt(g_listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
@@ -504,7 +473,6 @@ int main(int argc, char **argv){
 
     fprintf(stderr, "server listening on port %d with %d acceptor threads\n", port, nthreads);
 
-    // Spawn LF acceptor pool
     for (int i=0;i<nthreads;++i){
         pthread_t tid;
         if (pthread_create(&tid, NULL, worker_main, NULL) != 0) { perror("pthread_create"); return 1; }

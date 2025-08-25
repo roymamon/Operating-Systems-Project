@@ -2,29 +2,24 @@
 #include <stddef.h>
 
 typedef struct {
-    int V;      // number of vertices
-    int E;      // number of edges
-    int **adj;  // adjacency matrix (0/1), undirected
-    int **w;    // symmetric positive weights where adj[u][v]==1
+    int V;      
+    int E;      
+    int **adj;  
+    int **w;    
 } Graph;
 
-/* Construction / teardown */
 Graph* create_graph(int V);
 void   free_graph(Graph *g);
 
-/* Random generator (assigns random positive weights to added edges) */
 void   generate_random_graph(Graph *g, int targetE, unsigned int seed);
 
-/* Add a single undirected edge (u,v) with positive weight w (default 1 if <=0).
-   Returns 1 if added, 0 if invalid/duplicate/self-loop/out-of-range. */
+
 int    graph_add_edge(Graph *g, int u, int v, int w);
 
-/* Helpers and checks */
 int    degree(const Graph *g, int u);
 int    connected_among_non_isolated(const Graph *g);
 int    all_even_degrees(const Graph *g);
 
-/* Optional debug */
 void   print_graph(const Graph *g);
 
 /* Euler circuit (Hierholzer). Returns 1 on success and fills (path,path_len). */

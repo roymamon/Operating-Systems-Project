@@ -1,5 +1,3 @@
-// Standalone example run (CLI build only): ./graph <edges> <vertices> [seed] [-p]
-
 #define _XOPEN_SOURCE 700
 #include "graph.h"
 
@@ -10,14 +8,12 @@
 #include <time.h>
 #include <errno.h>
 #include <limits.h>
-#include <math.h>   // not strictly needed
+#include <math.h>   
 #include <stdint.h>
-/* Tunable for random weights */
 #ifndef GRAPH_RAND_WMAX
-#define GRAPH_RAND_WMAX 100   // edges get weights in [1..GRAPH_RAND_WMAX]
+#define GRAPH_RAND_WMAX 100  
 #endif
 
-/*------------------ Graph utils ------------------*/
 
 Graph* create_graph(int V) {
     Graph *g = malloc(sizeof(Graph));
@@ -50,12 +46,11 @@ void free_graph(Graph *g) {
     free(g);
 }
 
-/* internal: add edge with explicit weight (>0) */
 static int add_edge_w(Graph *g, int u, int v, int w) {
     if (u < 0 || v < 0 || u >= g->V || v >= g->V) return 0;
-    if (u == v) return 0;              // no self-loops
-    if (w <= 0) return 0;              // positive weights only
-    if (g->adj[u][v]) return 0;        // no multiedges
+    if (u == v) return 0;              
+    if (w <= 0) return 0;              
+    if (g->adj[u][v]) return 0;        
 
     g->adj[u][v] = g->adj[v][u] = 1;
     g->w[u][v]   = g->w[v][u]   = w;
@@ -63,12 +58,9 @@ static int add_edge_w(Graph *g, int u, int v, int w) {
     return 1;
 }
 
-/* internal: add edge with explicit weight (>0) */
-// static int add_edge_w(Graph *g, int u, int v, int w) { ... }  // you already have this
 
 int graph_add_edge(Graph *g, int u, int v, int w) {
     if (w <= 0) w = 1;
-    // add_edge_w is your existing internal function
     extern int add_edge_w(Graph *g, int u, int v, int w); // forward for old compilers
     return add_edge_w(g, u, v, w);
 }
@@ -87,7 +79,6 @@ void print_graph(const Graph *g) {
         }
         printf("\n");
     }
-    //If you want, also print weights (commented to keep server output stable)
     printf("Weights matrix:\n");
     for (int i = 0; i < g->V; ++i) {
         for (int j = 0; j < g->V; ++j) {
@@ -98,7 +89,6 @@ void print_graph(const Graph *g) {
     
 }
 
-/*------------------ Random graph generator ------------------*/
 
 void generate_random_graph(Graph *g, int targetE, unsigned int seed) {
     srand(seed);
@@ -116,7 +106,6 @@ void generate_random_graph(Graph *g, int targetE, unsigned int seed) {
     }
 }
 
-/*------------------ Connectivity ------------------*/
 
 static void dfs(const Graph *g, int u, int *visited) {
     visited[u] = 1;
@@ -140,7 +129,6 @@ int connected_among_non_isolated(const Graph *g) {
     return ok;
 }
 
-/*------------------ Euler circuit ------------------*/
 
 int all_even_degrees(const Graph *g) {
     for (int i = 0; i < g->V; ++i)
@@ -210,23 +198,19 @@ int euler_circuit(const Graph *g, int **path_out, int *path_len_out) {
     return 1;
 }
 
-/*------------------ MST (Prim, O(V^2)) ------------------*/
 
 long long mst_weight_prim(const Graph *g) {
     const int V = g->V;
     if (V == 0) return 0;
     if (V == 1) return 0;
 
-    // If any vertex is isolated or graph disconnected, no spanning tree
     for (int i = 0; i < V; ++i) {
-        if (degree(g, i) == 0) return -1;  // isolated vertex => cannot span all V
+        if (degree(g, i) == 0) return -1;  
     }
-    // Quick connectivity check (stronger than "among non-isolated")
-    // Do a DFS from 0 and require all vertices to be visited.
+   
     int *vis = calloc(V, sizeof(int));
     if (!vis) { perror("calloc"); exit(1); }
-    // reuse local DFS
-    // inline DFS:
+    
     int stackSize = V, top = 0;
     int *stack = malloc(stackSize * sizeof(int));
     if (!stack) { perror("malloc"); exit(1); }
@@ -251,7 +235,6 @@ long long mst_weight_prim(const Graph *g) {
     free(vis);
     free(stack);
 
-    // Prim
     const int INF = INT_MAX / 4;
     int *key    = malloc(V * sizeof(int));
     int *inMST  = calloc(V, sizeof(int));
@@ -269,14 +252,13 @@ long long mst_weight_prim(const Graph *g) {
                 best = key[i]; u = i;
             }
         }
-        if (u == -1 || best == INF) {  // disconnected (shouldn’t happen after check)
+        if (u == -1 || best == INF) {  
             free(key); free(inMST);
             return -1;
         }
         inMST[u] = 1;
         total += (it == 0 ? 0 : best);
 
-        // relax neighbors
         for (int v = 0; v < V; ++v) {
             if (!inMST[v] && g->adj[u][v]) {
                 int w = g->w[u][v];
@@ -290,14 +272,11 @@ long long mst_weight_prim(const Graph *g) {
     return total;
 }
 
-/*======================  Maximum Clique  ======================*/
-/* Bron–Kerbosch with pivot, implemented using dynamic bitsets. */
 
-/* ---- tiny dynamic bitset ---- */
 typedef struct {
     int nbits;
-    int nwords;          // = (nbits + 63) / 64
-    uint64_t *w;         // length nwords
+    int nwords;          
+    uint64_t *w;        
 } Bitset;
 
 static Bitset bs_make(int nbits) {
@@ -338,10 +317,9 @@ static inline void bs_clear(Bitset *b, int i){
     b->w[i>>6] &= ~(UINT64_C(1)<<(i&63));
 }
 
-/* Precompute neighbor masks N[v] as bitsets for quick intersections. */
 typedef struct {
     int V;
-    Bitset *N;          // array length V, each a bitset of neighbors of v
+    Bitset *N;          
 } NBMasks;
 
 static NBMasks nb_build(const Graph *g){
@@ -360,9 +338,7 @@ static void nb_free(NBMasks *nb){
     free(nb->N); nb->N=NULL;
 }
 
-/* Choose a pivot u from P∪X that maximizes |P ∩ N(u)| (Tomita pivot) */
 static int choose_pivot(const Bitset *P, const Bitset *X, const NBMasks *nb){
-    // U = P ∪ X
     Bitset U = bs_make(P->nbits);
     bs_copy(&U, P); bs_or(&U, X);
 
@@ -373,7 +349,6 @@ static int choose_pivot(const Bitset *P, const Bitset *X, const NBMasks *nb){
             int bit = __builtin_ctzll(w);
             int u = (word<<6) + bit;
             if (u >= U.nbits) break;
-            // deg = |P ∩ N(u)|
             Bitset tmp = bs_make(P->nbits);
             bs_copy(&tmp, P);
             bs_and(&tmp, &nb->N[u]);
@@ -384,10 +359,9 @@ static int choose_pivot(const Bitset *P, const Bitset *X, const NBMasks *nb){
         }
     }
     bs_free(&U);
-    return best_u;     // may be -1 if P and X empty (base case)
+    return best_u;     
 }
 
-/* Global best (kept local to the call via a small struct). */
 typedef struct {
     int best_size;
     Bitset best_R;
@@ -404,12 +378,11 @@ static void BK_recurse(Bitset *R, Bitset *P, Bitset *X, BKState *S){
         return;
     }
 
-    int u = choose_pivot(P, X, S->nb);        // pivot
+    int u = choose_pivot(P, X, S->nb);        
     Bitset P_without_Nu = bs_make(P->nbits);
     bs_copy(&P_without_Nu, P);
     if (u >= 0) bs_minus(&P_without_Nu, &S->nb->N[u]);
 
-    // Iterate vertices v in P \ N(u)
     for (int word=0; word<P_without_Nu.nwords; ++word){
         uint64_t w = P_without_Nu.w[word];
         while (w){
@@ -417,17 +390,13 @@ static void BK_recurse(Bitset *R, Bitset *P, Bitset *X, BKState *S){
             int v = (word<<6) + bit;
             if (v >= P_without_Nu.nbits) break;
 
-            // R' = R ∪ {v}
             Bitset Rp = bs_make(R->nbits); bs_copy(&Rp, R); bs_set(&Rp, v);
 
-            // P' = P ∩ N(v), X' = X ∩ N(v)
             Bitset Pp = bs_make(P->nbits); bs_copy(&Pp, P); bs_and(&Pp, &S->nb->N[v]);
             Bitset Xp = bs_make(X->nbits); bs_copy(&Xp, X); bs_and(&Xp, &S->nb->N[v]);
 
-            // Branch
             BK_recurse(&Rp, &Pp, &Xp, S);
 
-            // P = P \ {v}; X = X ∪ {v}
             Bitset singleton = bs_make(P->nbits); bs_set(&singleton, v);
             bs_minus(P, &singleton);
             bs_or(X, &singleton);
@@ -435,7 +404,7 @@ static void BK_recurse(Bitset *R, Bitset *P, Bitset *X, BKState *S){
 
             bs_free(&Rp); bs_free(&Pp); bs_free(&Xp);
 
-            w &= (w-1); // next set bit in P_without_Nu word
+            w &= (w-1); 
         }
     }
     bs_free(&P_without_Nu);
@@ -455,7 +424,6 @@ int max_clique(const Graph *g, int *clique_out, int *clique_size_out){
 
     BK_recurse(&R, &P, &X, &S);
 
-    // Marshal result
     if (clique_out){
         int k = 0;
         for (int word=0; word<S.best_R.nwords; ++word){
@@ -472,23 +440,18 @@ int max_clique(const Graph *g, int *clique_out, int *clique_size_out){
         *clique_size_out = S.best_size;
     }
 
-    // cleanup
     bs_free(&R); bs_free(&P); bs_free(&X);
     bs_free(&S.best_R);
     nb_free(&nb);
 
     return S.best_size;
 }
-/*================ Count all cliques of size >= 3 ================*/
-/* Enumerate ALL cliques (not only maximal). No pivot pruning here,
-   because pivot pruning enumerates maximal cliques only. */
 
 static void BK_count_all(Bitset *R, int sizeR, Bitset *P,
                          const NBMasks *nb, long long *cnt)
 {
-    if (sizeR >= 3) (*cnt)++;  // count this clique
+    if (sizeR >= 3) (*cnt)++;  
 
-    // We’ll iterate over a snapshot of P, while mutating P as we go
     Bitset Pc = bs_make(P->nbits);
     bs_copy(&Pc, P);
 
@@ -500,20 +463,16 @@ static void BK_count_all(Bitset *R, int sizeR, Bitset *P,
             if (v >= Pc.nbits) break;
             mask &= (mask - 1);
 
-            // Remove v from P
             bs_clear(P, v);
 
-            // Rp = R ∪ {v}
             Bitset Rp = bs_make(R->nbits);
             bs_copy(&Rp, R);
             bs_set(&Rp, v);
 
-            // P' = P ∩ N(v)
             Bitset Pp = bs_make(P->nbits);
             bs_copy(&Pp, P);
             bs_and(&Pp, &nb->N[v]);
 
-            // Recurse
             BK_count_all(&Rp, sizeR + 1, &Pp, nb, cnt);
 
             bs_free(&Rp);
@@ -543,7 +502,6 @@ long long count_cliques_3plus(const Graph *g)
     return cnt;
 }
 
-/*======================  Hamiltonian Cycle (backtracking)  ======================*/
 
 static int ham_backtrack(const Graph *g, int start, int pos, int *path, unsigned char *used) {
     if (pos == g->V) {
@@ -552,11 +510,9 @@ static int ham_backtrack(const Graph *g, int start, int pos, int *path, unsigned
     }
 
     int prev = path[pos - 1];
-    // Try neighbors of prev
     for (int v = 0; v < g->V; ++v) {
-        if (!g->adj[prev][v]) continue;      // must be adjacent
-        if (used[v]) continue;               // must be unused
-        // small pruning: avoid dead ends early
+        if (!g->adj[prev][v]) continue;      
+        if (used[v]) continue;               
         if (degree(g, v) < 2) continue;
 
         used[v] = 1;
@@ -570,10 +526,9 @@ static int ham_backtrack(const Graph *g, int start, int pos, int *path, unsigned
 int hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out) {
     if (!g || g->V < 3) return 0;
 
-    // Basic feasibility checks
     if (!connected_among_non_isolated(g)) return 0;
     for (int i = 0; i < g->V; ++i) {
-        if (degree(g, i) < 2) return 0;  // every vertex in a cycle needs degree >= 2
+        if (degree(g, i) < 2) return 0;  
     }
 
     int *path = (int *)malloc((size_t)g->V * sizeof(int));
@@ -581,7 +536,7 @@ int hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out) {
     unsigned char *used = (unsigned char *)calloc((size_t)g->V, 1);
     if (!used) { perror("calloc"); exit(1); }
 
-    int start = 0;                 // fix an arbitrary start (eliminates cyclic symmetries)
+    int start = 0;                 
     path[0] = start;
     used[start] = 1;
 
@@ -591,7 +546,6 @@ int hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out) {
 
     if (!found) { free(path); return 0; }
 
-    // Marshal output as V+1 vertices to close the cycle
     int *cycle = (int *)malloc((size_t)(g->V + 1) * sizeof(int));
     if (!cycle) { perror("malloc"); exit(1); }
     for (int i = 0; i < g->V; ++i) cycle[i] = path[i];
@@ -604,7 +558,6 @@ int hamilton_cycle(const Graph *g, int **cycle_out, int *cycle_len_out) {
     return 1;
 }
 
-/*------------------ CLI main (compiled out for server) ------------------*/
 #ifndef GRAPH_NO_MAIN
 int main(int argc, char **argv) {
     if (argc < 3) {
@@ -633,7 +586,6 @@ int main(int argc, char **argv) {
 
     if (printAdj) print_graph(g);
 
-    // Example: show MST too (optional)
     long long mst = mst_weight_prim(g);
     if (mst >= 0) {
         printf("MST total weight: %lld\n", mst);
@@ -641,7 +593,6 @@ int main(int argc, char **argv) {
         printf("MST: graph is not connected (no spanning tree)\n");
     }
 
-    //example max clique
     int *cl = malloc(g->V * sizeof(int));
     int cs = 0;
     int sz = max_clique(g, cl, &cs);
@@ -650,11 +601,9 @@ int main(int argc, char **argv) {
     for (int i=0;i<cs;i++) printf("%d%s", cl[i], (i+1==cs)?"\n":" ");
     free(cl);
     
-    //number of cliques
     long long c3 = count_cliques_3plus(g);
     printf("Number of cliques (sized >= 3): %lld\n", c3);
 
-    //hamilton cycle
     int *hc = NULL, hlen = 0;
     if (hamilton_cycle(g, &hc, &hlen)) {
     printf("Hamiltonian cycle found: ");
@@ -667,7 +616,6 @@ int main(int argc, char **argv) {
     }
     
 
-    // Keep your Euler demo
     if (!connected_among_non_isolated(g)) {
         printf("No Euler circuit: graph is disconnected among non-isolated vertices.\n");
         free_graph(g);
